@@ -1,0 +1,54 @@
+{
+  "materials": [
+    {
+      "item": "minecraft:enchanted_book",
+      "enchantments": [
+        {
+          "id": "minecraft:sharpness",
+          "level": 5,
+          "require_modifier_slots": 0,
+          "cost_modifier_slots_per_level": 1
+        },
+        {
+          "id": "minecraft:protection",
+          "level": 4,
+          "require_modifier_slots": 0,
+          "cost_modifier_slots_per_level": 1
+        }
+      ]
+    },
+    {
+      "item": "minecraft:diamond",
+      "enchantments": [
+        {
+          "id": "minecraft:sharpness",
+          "level": 3,
+          "require_modifier_slots": 0,
+          "cost_modifier_slots_per_level": 0
+        }
+      ]
+    },
+    {
+      "item": "tconstruct:manyullyn_ingot",
+      "enchantments": [
+        {
+          "id": "minecraft:sharpness",
+          "level": 7,
+          "require_modifier_slots": 1,
+          "cost_modifier_slots_per_level": 1
+        },
+        {
+          "id": "minecraft:looting",
+          "level": 3,
+          "require_modifier_slots": 1,
+          "cost_modifier_slots_per_level": 0
+        }
+      ]
+    }
+  ],
+  "enchantment_limits": {
+    "minecraft:sharpness": 10,
+    "minecraft:protection": 8,
+    "minecraft:looting": 5
+  }
+}

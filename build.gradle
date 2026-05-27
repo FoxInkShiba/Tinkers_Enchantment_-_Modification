@@ -1,0 +1,58 @@
+buildscript {
+    repositories {
+        maven { url = 'https://maven.minecraftforge.net/' }
+        maven { url = 'https://repo.spongepowered.org/maven' }
+        maven { url = "https://repo.spongepowered.org/maven-snapshots/" }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:3.+'
+        classpath 'org.spongepowered:mixingradle:0.7-SNAPSHOT'
+    }
+}
+
+apply plugin: 'net.minecraftforge.gradle'
+apply plugin: 'org.spongepowered.mixin'
+
+version = '1.0'
+group = 'com.crashguard'
+archivesBaseName = 'Tinkers_Enchantment_&_Modification'
+
+sourceCompatibility = targetCompatibility = '1.8'
+
+minecraft {
+    mappings channel: 'snapshot', version: '20171003-1.12'
+}
+
+repositories {
+    maven { url = 'https://maven.minecraftforge.net/' }
+    maven { url = 'https://repo.spongepowered.org/maven' }
+    mavenCentral()
+}
+
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.12.2-14.23.5.2864'
+    compile('org.spongepowered:mixin:0.7.11-SNAPSHOT') {
+        exclude module: 'guava'
+        exclude module: 'commons-io'
+        exclude module: 'gson'
+    }
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+}
+
+mixin {
+    add sourceSets.main, "mixins.crashguard.refmap.json"
+    config "mixins.crashguard.json"
+}
+
+jar {
+    manifest {
+        attributes(
+                "FMLCorePlugin": "com.crashguard.core.CrashGuardPlugin",
+                "FMLCorePluginContainsFMLMod": "true"
+        )
+    }
+    from sourceSets.main.output
+}
+
+jar.finalizedBy('reobfJar')
