@@ -1,0 +1,26 @@
+Tinkers' Enchantment and Modification
+
+Makes Tinkers' Construct tools compatible with most enchantments.
+
+Adds two new workstations: the Enchanting Assembly Table (apply enchantments to Tinkers' tools using enchanted books) and the Enchanting Forge Table (scrollable interface for managing large numbers of enchanted books, merging enchantments, and boosting enchantment levels using special materials like diamonds and Nether Stars).
+
+All core mechanics are highly configurable. You can adjust enchantment level caps, choose between additive or max-level merging, enable/disable ranged or melee enchantment damage calculations, and tweak Tinkers' damage decay coefficients — among many other options.
+
+Whether you want to remove that annoying damage decay or break through level limits, this mod lets you do it.
+
+By default, enchantment loss during Tinkers' tool and armor forging is disabled. You can also add enchantment protection by shapeless-crafting a tool with an enchantment preserver material (default: diamond). The default damage decay coefficient has been adjusted to 1.1 (vanilla is 0.9), meaning: the higher the damage, the higher the damage ( ).
+
+Due to some messy project management stuff, the config file and in-game names aren't what I wanted — but I'm too lazy to change them now. The config file is crashguard.cfg.
+
+
+
+
+让匠魂工具兼容大部分附魔。
+
+ 它添加了两个新的工作台：附魔装配台（使用附魔书为匠魂工具添加附魔）和附魔锻造台（可滚动浏览大量附魔书，合并附魔，并使用特殊材料如钻石、下界之星等提升附魔等级）。
+
+ 所有核心机制都高度可配置。你可以调整附魔等级上限，选择等级叠加或取最大值，开关远程/近战附魔伤害计算，以及修改匠魂伤害衰减的系数等。 无论你想移除令人讨厌的伤害衰减、突破等级上限，还是简单让匠魂工具支持原版铁砧和附魔书，这个模组都能帮你实现。
+
+默认将匠魂工具和盔甲锻造失去附魔关闭，当然也可以使用附魔保护材料（默认是钻石）无序合成添加附魔保护。默认匠魂伤害衰减系数被调至 1.1（原版为 0.9），也就是说伤害越高，伤害就越高（？）。
+
+ 模组配置文件和游戏内名称都因为一些项目管理问题和我想要的名字不一样，但懒得改了。配置文件为 crashguard.cfg。
