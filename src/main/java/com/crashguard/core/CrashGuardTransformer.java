@@ -3,6 +3,7 @@ package com.crashguard.core;
 import net.minecraft.launchwrapper.IClassTransformer;
 import org.objectweb.asm.*;
 import org.objectweb.asm.commons.AdviceAdapter;
+import org.objectweb.asm.commons.LocalVariablesSorter;
 
 public class CrashGuardTransformer implements IClassTransformer {
 
@@ -197,12 +198,17 @@ public class CrashGuardTransformer implements IClassTransformer {
 
                 if (name.equals("attackEntity") && desc.contains("Lnet/minecraft/entity/EntityLivingBase;")) {
                     System.out.println("[CrashGuard] Transforming ToolHelper.attackEntity");
-                    return new UnifiedAttackEntityInjector(mv);
+                    return new AttackEntityInjector(mv, access, desc);
                 }
 
                 if (name.equals("calcCutoffDamage") && desc.equals("(FF)F")) {
                     System.out.println("[CrashGuard] Transforming ToolHelper.calcCutoffDamage");
                     return new CalcCutoffDamageVisitor(mv);
+                }
+
+                if (name.equals("getActualDamage") && desc.equals("(Lnet/minecraft/item/ItemStack;Lnet/minecraft/entity/EntityLivingBase;)F")) {
+                    System.out.println("[CrashGuard] Transforming ToolHelper.getActualDamage");
+                    return new GetActualDamageInjector(mv, access, desc);
                 }
 
                 return mv;
@@ -212,27 +218,91 @@ public class CrashGuardTransformer implements IClassTransformer {
         return cw.toByteArray();
     }
 
-    private static class UnifiedAttackEntityInjector extends MethodVisitor {
-        public UnifiedAttackEntityInjector(MethodVisitor mv) {
-            super(Opcodes.ASM5, mv);
+    private static class AttackEntityInjector extends LocalVariablesSorter {
+
+        private int tempBaseVar = -1;
+        private int tempCutoffVar = -1;
+
+        protected AttackEntityInjector(MethodVisitor mv, int access, String desc) {
+            super(Opcodes.ASM5, access, desc, mv);
         }
 
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) {
-            super.visitMethodInsn(opcode, owner, name, desc, itf);
+            if (opcode == Opcodes.INVOKESTATIC
+                    && name.equals("calcCutoffDamage")
+                    && owner.equals("slimeknights/tconstruct/library/utils/ToolHelper")
+                    && desc.equals("(FF)F")) {
 
-            if (name.equals("calcCutoffDamage") && owner.equals("slimeknights/tconstruct/library/utils/ToolHelper")) {
-                mv.visitInsn(Opcodes.DUP);
-                mv.visitVarInsn(Opcodes.ALOAD, 0);
-                mv.visitVarInsn(Opcodes.ALOAD, 3);
-                mv.visitVarInsn(Opcodes.ALOAD, 4);
+                if (tempBaseVar == -1) {
+                    tempBaseVar = newLocal(Type.FLOAT_TYPE);
+                    tempCutoffVar = newLocal(Type.FLOAT_TYPE);
+                }
+
+                // 栈: [damage, cutoff]
+                mv.visitInsn(Opcodes.DUP2);
+                mv.visitVarInsn(Opcodes.FSTORE, tempCutoffVar);
+                mv.visitVarInsn(Opcodes.FSTORE, tempBaseVar);
+                mv.visitInsn(Opcodes.POP2);
+
+                mv.visitVarInsn(Opcodes.ALOAD, 0);              // stack
+                mv.visitVarInsn(Opcodes.ALOAD, 3);              // targetEntity
+                mv.visitVarInsn(Opcodes.ALOAD, 4);              // projectileEntity
+                mv.visitVarInsn(Opcodes.FLOAD, tempBaseVar);    // damage
+                mv.visitVarInsn(Opcodes.FLOAD, tempCutoffVar);  // cutoff
+
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC,
                         "com/crashguard/util/CompatHandler",
-                        "getUnifiedEnchantmentDamage",
-                        "(Lnet/minecraft/item/ItemStack;Lnet/minecraft/entity/Entity;Lnet/minecraft/entity/Entity;)F",
+                        "getTotalDamageForDecay",
+                        "(Lnet/minecraft/item/ItemStack;Lnet/minecraft/entity/Entity;Lnet/minecraft/entity/Entity;FF)F",
                         false);
-                mv.visitInsn(Opcodes.FADD);
+                return;
             }
+            super.visitMethodInsn(opcode, owner, name, desc, itf);
+        }
+    }
+
+    private static class GetActualDamageInjector extends LocalVariablesSorter {
+
+        private int tempDamageVar = -1;
+        private int tempCutoffVar = -1;
+
+        protected GetActualDamageInjector(MethodVisitor mv, int access, String desc) {
+            super(Opcodes.ASM5, access, desc, mv);
+        }
+
+        @Override
+        public void visitMethodInsn(int opcode, String owner, String name, String desc, boolean itf) {
+            if (opcode == Opcodes.INVOKESTATIC
+                    && name.equals("calcCutoffDamage")
+                    && owner.equals("slimeknights/tconstruct/library/utils/ToolHelper")
+                    && desc.equals("(FF)F")) {
+
+                if (tempDamageVar == -1) {
+                    tempDamageVar = newLocal(Type.FLOAT_TYPE);
+                    tempCutoffVar = newLocal(Type.FLOAT_TYPE);
+                }
+
+                // 栈: [damage, cutoff]
+                mv.visitInsn(Opcodes.DUP2);
+                mv.visitVarInsn(Opcodes.FSTORE, tempCutoffVar);
+                mv.visitVarInsn(Opcodes.FSTORE, tempDamageVar);
+                mv.visitInsn(Opcodes.POP2);
+
+                mv.visitVarInsn(Opcodes.ALOAD, 0);              // stack
+                mv.visitInsn(Opcodes.ACONST_NULL);              // target = null
+                mv.visitInsn(Opcodes.ACONST_NULL);              // projectile = null
+                mv.visitVarInsn(Opcodes.FLOAD, tempDamageVar);  // damage
+                mv.visitVarInsn(Opcodes.FLOAD, tempCutoffVar);  // cutoff
+
+                mv.visitMethodInsn(Opcodes.INVOKESTATIC,
+                        "com/crashguard/util/CompatHandler",
+                        "getDisplayDamageWithDecay",
+                        "(Lnet/minecraft/item/ItemStack;Lnet/minecraft/entity/Entity;Lnet/minecraft/entity/Entity;FF)F",
+                        false);
+                return;
+            }
+            super.visitMethodInsn(opcode, owner, name, desc, itf);
         }
     }
 
@@ -243,36 +313,43 @@ public class CrashGuardTransformer implements IClassTransformer {
 
         @Override
         public void visitCode() {
+            // 获取配置的衰减乘数
             mv.visitMethodInsn(Opcodes.INVOKESTATIC,
                     "com/crashguard/config/ConfigHandler",
                     "getDamageDecayMultiplier",
                     "()F", false);
             mv.visitVarInsn(Opcodes.FSTORE, 2);
 
+            // 获取配置的衰减上限
             mv.visitMethodInsn(Opcodes.INVOKESTATIC,
                     "com/crashguard/config/ConfigHandler",
                     "getDamageDecayCap",
                     "()F", false);
             mv.visitVarInsn(Opcodes.FSTORE, 3);
 
+            // float p = 1f
             mv.visitInsn(Opcodes.FCONST_1);
             mv.visitVarInsn(Opcodes.FSTORE, 4);
 
+            // float d = damage (var0)
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FSTORE, 5);
 
+            // damage = 0f (复用 var0)
             mv.visitInsn(Opcodes.FCONST_0);
             mv.visitVarInsn(Opcodes.FSTORE, 0);
 
             Label loopStart = new Label();
             Label loopEnd = new Label();
 
+            // while (d > cutoff)
             mv.visitLabel(loopStart);
             mv.visitVarInsn(Opcodes.FLOAD, 5);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
             mv.visitInsn(Opcodes.FCMPG);
             mv.visitJumpInsn(Opcodes.IFLE, loopEnd);
 
+            // damage += p * cutoff
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
@@ -280,26 +357,30 @@ public class CrashGuardTransformer implements IClassTransformer {
             mv.visitInsn(Opcodes.FADD);
             mv.visitVarInsn(Opcodes.FSTORE, 0);
 
+            // if (p > 0.001f)
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitLdcInsn(0.001f);
             mv.visitInsn(Opcodes.FCMPG);
-            Label pSmall = new Label();
-            mv.visitJumpInsn(Opcodes.IFLE, pSmall);
+            Label labelSmall = new Label();
+            mv.visitJumpInsn(Opcodes.IFLE, labelSmall);
 
+            // p *= decayMultiplier
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 2);
             mv.visitInsn(Opcodes.FMUL);
             mv.visitVarInsn(Opcodes.FSTORE, 4);
 
+            // if (p > cap) p = cap
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 3);
             mv.visitInsn(Opcodes.FCMPG);
-            Label pNotCap = new Label();
-            mv.visitJumpInsn(Opcodes.IFLE, pNotCap);
+            Label labelNotCap = new Label();
+            mv.visitJumpInsn(Opcodes.IFLE, labelNotCap);
             mv.visitVarInsn(Opcodes.FLOAD, 3);
             mv.visitVarInsn(Opcodes.FSTORE, 4);
-            mv.visitLabel(pNotCap);
+            mv.visitLabel(labelNotCap);
 
+            // d -= cutoff
             mv.visitVarInsn(Opcodes.FLOAD, 5);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
             mv.visitInsn(Opcodes.FSUB);
@@ -307,21 +388,33 @@ public class CrashGuardTransformer implements IClassTransformer {
 
             mv.visitJumpInsn(Opcodes.GOTO, loopStart);
 
-            mv.visitLabel(pSmall);
+            // p <= 0.001f 时的处理
+            mv.visitLabel(labelSmall);
+            // return damage + p * cutoff + p * d * (1f - p) / cutoff
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
             mv.visitInsn(Opcodes.FMUL);
+            mv.visitInsn(Opcodes.FADD);
+
+            mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 5);
+            mv.visitInsn(Opcodes.FMUL);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
             mv.visitInsn(Opcodes.FDIV);
+
             mv.visitInsn(Opcodes.FCONST_1);
+            mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitInsn(Opcodes.FSUB);
+
             mv.visitInsn(Opcodes.FMUL);
             mv.visitInsn(Opcodes.FADD);
+
             mv.visitInsn(Opcodes.FRETURN);
 
+            // 循环结束
             mv.visitLabel(loopEnd);
+            // return damage + p * d
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 5);

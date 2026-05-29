@@ -55,6 +55,8 @@ public class ConfigHandler {
     public static boolean enableRangedEnchant = true;
     public static boolean enableSpeedBonus = true;
     public static boolean enableMeleeEnchant = true;
+    // ========== 伤害计算配置 ==========
+    public static boolean applyEnchantBeforeDecay = true;
 
     // ========== 伤害衰减配置 / Damage Decay Settings ==========
     public static float damageDecayMultiplier = 1.1f;
@@ -67,6 +69,15 @@ public class ConfigHandler {
     }
 
     public static void syncConfig() {
+        // ========== 伤害计算配置 / Damage Calculation ==========
+        applyEnchantBeforeDecay = config.getBoolean("applyEnchantBeforeDecay", "damage", true,
+                "附魔加成是否在伤害衰减之前计算:\n" +
+                        "  true = 先计算附魔加成，再计算衰减\n" +
+                        "  false = 先计算衰减，再计算附魔加成\n\n" +
+                        "Apply enchantment bonus before damage decay:\n" +
+                        "  true = Calculate enchantment first, then decay\n" +
+                        "  false = Calculate decay first, then enchantment");
+
         // ========== 存储方式 / Storage ==========
         storeEnchantmentInRootNBT = config.getBoolean("storeEnchantmentInRootNBT", "storage", true,
                 "附魔存储方式: true=存到根NBT(替换部件/升级时保留附魔), false=存到匠魂原位置(无用选项，不必理会)\n" +
@@ -151,7 +162,7 @@ public class ConfigHandler {
         // 如果没有配置项，写入默认值
         if (boostEntries.length == 0) {
             config.getCategory("storage").get("enchantBoostItems").setValues(new String[]{
-                    "minecraft:diamond@5@10",
+                    "minecraft:diamond_block@5@10",
                     "minecraft:nether_star@1@32767"
             });
             boostEntries = config.getStringList("enchantBoostItems", "storage", new String[0], "");
@@ -208,11 +219,11 @@ public class ConfigHandler {
                         "Speed damage multiplier: Final damage = (base + bonus) × (1 + speed × multiplier)");
 
         // ========== 伤害衰减配置 / Damage Decay ==========
-        damageDecayMultiplier = config.getFloat("damageDecayMultiplier", "decay", 1.1f, 0.0f, 10.0f,
+        damageDecayMultiplier = config.getFloat("damageDecayMultiplier", "decay", 1.1f, 0.0f, 100f,
                 "匠魂伤害衰减系数增量。值越大，伤害越高。原版为0.9 过高可能导致崩溃。\n" +
                         "Tinkers' damage decay multiplier increment. Higher value = more damage. Vanilla is 0.9. Too high may cause crashes.");
 
-        damageDecayCap = config.getFloat("damageDecayCap", "decay", 25.0f, 0.0f, 100.0f,
+        damageDecayCap = config.getFloat("damageDecayCap", "decay", 25.0f, 0.0f, 1000f,
                 "匠魂伤害衰减上限，设置单次衰减最多增加原本几倍的伤害\n" +
                         "Tinkers' damage decay cap. Sets how many times the original damage can be increased per decay.");
     }
@@ -226,4 +237,5 @@ public class ConfigHandler {
 
     public static float getDamageDecayMultiplier() { return damageDecayMultiplier; }
     public static float getDamageDecayCap() { return damageDecayCap; }
+    public static boolean applyEnchantBeforeDecay() { return applyEnchantBeforeDecay; }
 }

@@ -16,6 +16,7 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.common.util.Constants;
 import slimeknights.tconstruct.library.entity.EntityProjectileBase;
 import slimeknights.tconstruct.library.tools.ToolCore;
+import slimeknights.tconstruct.library.utils.ToolHelper;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -315,5 +316,29 @@ public class CompatHandler {
 
         rootNBT.setTag("ench", savedEnch);
         System.out.println("[CrashGuard] Armor: Restored " + savedEnch.tagCount() + " enchantments (force=" + forcePreserve + ")");
+    }
+    // ========== 统一伤害计算（整合衰减和附魔）==========
+    // 用于实际攻击伤害（同时支持近战和远程）
+    public static float getTotalDamageForDecay(ItemStack stack, Entity target, Entity projectile, float baseDamage, float cutoffDamage) {
+        float enchantDamage;
+
+        if (projectile != null) {
+            enchantDamage = getRangedEnchantmentDamage(stack, target, projectile);
+        } else {
+            enchantDamage = getMeleeEnchantmentDamage(stack, target);
+        }
+
+        if (ConfigHandler.applyEnchantBeforeDecay()) {
+            // 附魔在衰减前计算
+            return ToolHelper.calcCutoffDamage(baseDamage + enchantDamage, cutoffDamage);
+        } else {
+            // 附魔在衰减后计算
+            return ToolHelper.calcCutoffDamage(baseDamage, cutoffDamage) + enchantDamage;
+        }
+    }
+
+    // 用于面板显示伤害（只应用衰减系数配置，不计算附魔）
+    public static float getDisplayDamageWithDecay(ItemStack stack, Entity target, Entity projectile, float baseDamage, float cutoffDamage) {
+        return ToolHelper.calcCutoffDamage(baseDamage, cutoffDamage);
     }
 }

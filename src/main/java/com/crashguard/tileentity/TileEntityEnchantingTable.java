@@ -13,10 +13,8 @@ import net.minecraft.network.play.server.SPacketUpdateTileEntity;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ITickable;
 import net.minecraft.util.NonNullList;
-import net.minecraft.util.math.ChunkPos;
 import net.minecraft.util.text.ITextComponent;
 import net.minecraft.util.text.TextComponentString;
-import net.minecraft.world.WorldServer;
 import net.minecraftforge.common.util.Constants;
 
 public class TileEntityEnchantingTable extends TileEntity implements IInventory, ITickable {
@@ -29,11 +27,27 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
     private ItemStack lastTool = ItemStack.EMPTY;
     private ItemStack lastBook = ItemStack.EMPTY;
     private boolean isUpdating = false;
+    private boolean pendingClear = false;
+
+    public void triggerClear() {
+        pendingClear = true;
+    }
 
     @Override
     public void update() {
         if (world.isRemote) return;
         if (isUpdating) return;
+
+        if (pendingClear) {
+            pendingClear = false;
+            inventory.set(TOOL_SLOT, ItemStack.EMPTY);
+            inventory.set(BOOK_SLOT, ItemStack.EMPTY);
+            inventory.set(OUTPUT_SLOT, ItemStack.EMPTY);
+            lastTool = ItemStack.EMPTY;
+            lastBook = ItemStack.EMPTY;
+            markDirty();
+            syncToClient();
+        }
 
         ItemStack tool = getStackInSlot(TOOL_SLOT);
         ItemStack book = getStackInSlot(BOOK_SLOT);
@@ -117,15 +131,7 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
         return result;
     }
 
-    public void onTakeOutput() {
-        if (world.isRemote) return;
-        setInventorySlotContents(TOOL_SLOT, ItemStack.EMPTY);
-        setInventorySlotContents(BOOK_SLOT, ItemStack.EMPTY);
-        markDirty();
-        syncToClient();
-    }
-
-    private void syncToClient() {
+    public void syncToClient() {
         if (world != null && !world.isRemote) {
             markDirty();
             world.notifyBlockUpdate(pos, world.getBlockState(pos), world.getBlockState(pos), 3);
@@ -165,7 +171,8 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
             ItemStack output = getStackInSlot(OUTPUT_SLOT);
             if (!output.isEmpty()) {
                 ItemStack result = output.copy();
-                onTakeOutput();
+                setInventorySlotContents(OUTPUT_SLOT, ItemStack.EMPTY);
+                triggerClear();
                 return result;
             }
             return ItemStack.EMPTY;
@@ -179,7 +186,8 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
             ItemStack output = getStackInSlot(OUTPUT_SLOT);
             if (!output.isEmpty()) {
                 ItemStack result = output.copy();
-                onTakeOutput();
+                setInventorySlotContents(OUTPUT_SLOT, ItemStack.EMPTY);
+                triggerClear();
                 return result;
             }
             return ItemStack.EMPTY;
@@ -187,6 +195,9 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
         ItemStack s = inventory.get(index);
         if (!s.isEmpty()) {
             inventory.set(index, ItemStack.EMPTY);
+            if (index == TOOL_SLOT || index == BOOK_SLOT) {
+                updatePreview();
+            }
         }
         return s;
     }
@@ -194,7 +205,13 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
     @Override
     public void setInventorySlotContents(int index, ItemStack stack) {
         inventory.set(index, stack);
+
+        if (index == TOOL_SLOT || index == BOOK_SLOT) {
+            updatePreview();
+        }
+
         markDirty();
+        syncToClient();
     }
 
     @Override
@@ -228,7 +245,10 @@ public class TileEntityEnchantingTable extends TileEntity implements IInventory,
         if (index == BOOK_SLOT) {
             return stack.getItem() instanceof ItemEnchantedBook;
         }
-        return false;
+        if (index == OUTPUT_SLOT) {
+            return false;
+        }
+        return true;
     }
 
     @Override

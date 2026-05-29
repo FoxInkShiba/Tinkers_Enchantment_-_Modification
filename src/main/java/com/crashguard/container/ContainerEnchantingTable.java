@@ -16,6 +16,7 @@ public class ContainerEnchantingTable extends Container {
     public ContainerEnchantingTable(InventoryPlayer playerInventory, TileEntityEnchantingTable tile) {
         this.tile = tile;
 
+        // 工具槽
         this.addSlotToContainer(new Slot(tile, 0, 44, 35) {
             @Override
             public boolean isItemValid(ItemStack stack) {
@@ -23,6 +24,7 @@ public class ContainerEnchantingTable extends Container {
             }
         });
 
+        // 附魔书槽
         this.addSlotToContainer(new Slot(tile, 1, 80, 35) {
             @Override
             public boolean isItemValid(ItemStack stack) {
@@ -30,6 +32,7 @@ public class ContainerEnchantingTable extends Container {
             }
         });
 
+        // 输出槽
         this.addSlotToContainer(new Slot(tile, 2, 116, 35) {
             @Override
             public boolean isItemValid(ItemStack stack) {
@@ -37,12 +40,14 @@ public class ContainerEnchantingTable extends Container {
             }
         });
 
+        // 玩家背包 3x9
         for (int i = 0; i < 3; i++) {
             for (int j = 0; j < 9; j++) {
                 this.addSlotToContainer(new Slot(playerInventory, j + i * 9 + 9, 8 + j * 18, 84 + i * 18));
             }
         }
 
+        // 快捷栏 9
         for (int i = 0; i < 9; i++) {
             this.addSlotToContainer(new Slot(playerInventory, i, 8 + i * 18, 142));
         }
@@ -55,20 +60,20 @@ public class ContainerEnchantingTable extends Container {
 
     @Override
     public ItemStack slotClick(int slotId, int dragType, ClickType clickType, EntityPlayer player) {
-        Slot slot = slotId >= 0 ? this.inventorySlots.get(slotId) : null;
-        // 数字键 + 输出槽：兼容处理
-        if (clickType == ClickType.SWAP && slot != null && slot.inventory == tile && slot.getSlotIndex() == 2) {
-            // 先清空材料
-            tile.onTakeOutput();
-            // 执行原 SWAP 逻辑
-            ItemStack output = slot.getStack().copy();
-            slot.putStack(ItemStack.EMPTY);
-            ItemStack hotbarStack = player.inventory.getStackInSlot(dragType);
-            player.inventory.setInventorySlotContents(dragType, output);
-            slot.putStack(hotbarStack);
-            return output;
+        // 先让原版处理所有点击
+        ItemStack result = super.slotClick(slotId, dragType, clickType, player);
+
+        // 检查输出槽是否变空了（说明物品被取走了）
+        if (slotId >= 0 && slotId < this.inventorySlots.size()) {
+            Slot slot = this.inventorySlots.get(slotId);
+            if (slot != null && slot.inventory == tile && slot.getSlotIndex() == 2 && !slot.getHasStack()) {
+                // 输出槽空了，触发清空工具槽和附魔书槽
+                tile.triggerClear();
+                detectAndSendChanges();
+            }
         }
-        return super.slotClick(slotId, dragType, clickType, player);
+
+        return result;
     }
 
     @Override
@@ -80,21 +85,25 @@ public class ContainerEnchantingTable extends Container {
             ItemStack slotStack = slot.getStack();
             originalStack = slotStack.copy();
 
+            // 输出槽（Shift+左键）
             if (index == 2) {
-                ItemStack outputCopy = slotStack.copy();
-                slot.putStack(ItemStack.EMPTY);
-                if (this.mergeItemStack(outputCopy, 3, 39, true)) {
-                    tile.onTakeOutput();
-                    slot.onSlotChange(slotStack, originalStack);
-                    return outputCopy;
+                if (!this.mergeItemStack(slotStack, 3, 39, true)) {
+                    return ItemStack.EMPTY;
                 }
-                slot.putStack(outputCopy);
-                return ItemStack.EMPTY;
-            } else if (index == 0 || index == 1) {
+                slot.putStack(ItemStack.EMPTY);
+                tile.triggerClear();
+                slot.onSlotChange(slotStack, originalStack);
+                detectAndSendChanges();
+                return originalStack;
+            }
+            // 工具槽或附魔书槽 -> 玩家背包
+            else if (index == 0 || index == 1) {
                 if (!this.mergeItemStack(slotStack, 3, 39, false)) {
                     return ItemStack.EMPTY;
                 }
-            } else {
+            }
+            // 玩家背包 -> 附魔书槽 或 工具槽
+            else {
                 if (slotStack.getItem() instanceof ItemEnchantedBook) {
                     if (!this.mergeItemStack(slotStack, 1, 2, false)) {
                         return ItemStack.EMPTY;
@@ -117,6 +126,7 @@ public class ContainerEnchantingTable extends Container {
             }
 
             slot.onTake(player, slotStack);
+            detectAndSendChanges();
         }
 
         return originalStack;

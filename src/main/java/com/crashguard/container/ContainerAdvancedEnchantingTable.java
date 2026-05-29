@@ -4,6 +4,7 @@ import com.crashguard.config.ConfigHandler;
 import com.crashguard.tileentity.TileEntityAdvancedEnchantingTable;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.entity.player.InventoryPlayer;
+import net.minecraft.inventory.ClickType;
 import net.minecraft.inventory.Container;
 import net.minecraft.inventory.Slot;
 import net.minecraft.item.ItemStack;
@@ -56,7 +57,7 @@ public class ContainerAdvancedEnchantingTable extends Container {
             }
         });
 
-        // 附魔书槽位（324格，坐标占位）
+        // 附魔书槽位（324格）
         for (int i = 0; i < BOOK_SLOT_COUNT; i++) {
             final int slotIndex = SLOT_BOOK_START + i;
             this.addSlotToContainer(new Slot(tile, slotIndex, 0, 0) {
@@ -67,30 +68,44 @@ public class ContainerAdvancedEnchantingTable extends Container {
             });
         }
 
-        // 记录玩家背包起始索引
         playerInvStartIndex = this.inventorySlots.size();
-        // 玩家背包主区域 27格
+        // 玩家背包 27格
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
-                int x = 8 + col * 18;
-                int y = 108 + row * 18;
-                this.addSlotToContainer(new Slot(playerInv, col + row * 9 + 9, x, y));
+                this.addSlotToContainer(new Slot(playerInv, col + row * 9 + 9, 8 + col * 18, 108 + row * 18));
             }
         }
 
-        // 记录快捷栏起始索引
         hotbarStartIndex = this.inventorySlots.size();
         // 快捷栏 9格
         for (int i = 0; i < 9; i++) {
-            int x = 8 + i * 18;
-            int y = 166;
-            this.addSlotToContainer(new Slot(playerInv, i, x, y));
+            this.addSlotToContainer(new Slot(playerInv, i, 8 + i * 18, 166));
         }
     }
 
     @Override
     public boolean canInteractWith(EntityPlayer player) {
         return tile.isUsableByPlayer(player);
+    }
+
+    @Override
+    public ItemStack slotClick(int slotId, int dragType, ClickType clickType, EntityPlayer player) {
+        // 数字快捷键处理
+        if (clickType == ClickType.SWAP && slotId >= 0 && slotId < this.inventorySlots.size()) {
+            Slot slot = this.inventorySlots.get(slotId);
+            if (slot != null && slot.inventory == tile && slot.getSlotIndex() == SLOT_OUTPUT) {
+                ItemStack result = slot.getStack().copy();
+                if (!result.isEmpty()) {
+                    slot.putStack(ItemStack.EMPTY);
+                    tile.triggerClear();
+                    detectAndSendChanges();
+                    // 将物品放到对应的快捷栏
+                    player.inventory.setInventorySlotContents(dragType, result);
+                    return result;
+                }
+            }
+        }
+        return super.slotClick(slotId, dragType, clickType, player);
     }
 
     @Override
@@ -102,36 +117,24 @@ public class ContainerAdvancedEnchantingTable extends Container {
             ItemStack slotStack = slot.getStack();
             originalStack = slotStack.copy();
 
-            // 输出槽：Shift+左键 / 数字快捷键 / 鼠标拖拽
             if (index == SLOT_OUTPUT) {
-                // 先复制一份
                 ItemStack outputCopy = slotStack.copy();
-                // 清空输出槽
                 slot.putStack(ItemStack.EMPTY);
-                // 尝试移到背包
-                this.mergeItemStack(outputCopy, playerInvStartIndex, hotbarStartIndex + 9, true);
-                // 强制再次清空输出槽（防止残留）
-                if (!slot.getStack().isEmpty()) {
-                    slot.putStack(ItemStack.EMPTY);
+                if (!this.mergeItemStack(outputCopy, playerInvStartIndex, hotbarStartIndex + 9, true)) {
+                    return ItemStack.EMPTY;
                 }
-                // 触发清空材料
                 tile.triggerClear();
-                return ItemStack.EMPTY;
-            }
-            // 附魔书槽位 -> 玩家背包
-            else if (index >= SLOT_BOOK_START && index <= SLOT_BOOK_END) {
+                slot.onSlotChange(slotStack, originalStack);
+                return originalStack;
+            } else if (index >= SLOT_BOOK_START && index <= SLOT_BOOK_END) {
                 if (!this.mergeItemStack(slotStack, playerInvStartIndex, hotbarStartIndex + 9, false)) {
                     return ItemStack.EMPTY;
                 }
-            }
-            // 工具/材料槽 -> 玩家背包
-            else if (index == SLOT_TOOL || index == SLOT_MATERIAL_TOP || index == SLOT_MATERIAL_BOTTOM) {
+            } else if (index == SLOT_TOOL || index == SLOT_MATERIAL_TOP || index == SLOT_MATERIAL_BOTTOM) {
                 if (!this.mergeItemStack(slotStack, playerInvStartIndex, hotbarStartIndex + 9, false)) {
                     return ItemStack.EMPTY;
                 }
-            }
-            // 玩家背包 -> 附魔书槽位
-            else if (index >= playerInvStartIndex && index < hotbarStartIndex + 9) {
+            } else if (index >= playerInvStartIndex && index < hotbarStartIndex + 9) {
                 if (slotStack.getItem() instanceof ItemEnchantedBook) {
                     if (!this.mergeItemStack(slotStack, SLOT_BOOK_START, SLOT_BOOK_END + 1, false)) {
                         this.mergeItemStack(slotStack, SLOT_MATERIAL_TOP, SLOT_MATERIAL_BOTTOM + 1, false);

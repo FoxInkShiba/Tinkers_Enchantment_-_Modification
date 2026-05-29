@@ -20,7 +20,8 @@ public class CrashGuardPlugin implements IFMLLoadingPlugin {
         return new String[]{
                 "com.crashguard.core.CrashGuardTransformer",
                 "com.crashguard.core.ToolBuilderTransformer",
-                "com.crashguard.core.ArmorBuilderTransformer"  // 新增
+                "com.crashguard.core.ArmorBuilderTransformer",
+                "com.crashguard.core.BattleSignTransformer"
         };
     }
 

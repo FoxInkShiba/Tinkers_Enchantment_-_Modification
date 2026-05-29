@@ -17,19 +17,25 @@ public class EnchantmentMaterialConfig {
 
     private static EnchantmentMaterialConfig INSTANCE;
 
-    public List<MaterialEntry> materials = new ArrayList<>();
-    public Map<String, Integer> enchantmentLimits = new HashMap<>();
-
-    public static class MaterialEntry {
-        public String item;
-        public List<EnchantmentEntry> enchantments = new ArrayList<>();
-    }
+    public List<EnchantmentEntry> enchantments = new ArrayList<>();
+    public List<GlobalMaterialEntry> global_materials = new ArrayList<>();
 
     public static class EnchantmentEntry {
         public String id;
-        public int level = 1;
-        public int require_modifier_slots = 0;
-        public int cost_modifier_slots_per_level = 0;
+        public List<MaterialEntry> materials = new ArrayList<>();
+    }
+
+    public static class GlobalMaterialEntry {
+        public String item;
+        public int count = 1;
+        public int max_level = 32767;
+        public int per_level = 1;
+    }
+
+    public static class MaterialEntry {
+        public String item;
+        public int count = 1;
+        public int max_level = 32767;
     }
 
     public static void load() {
@@ -48,6 +54,8 @@ public class EnchantmentMaterialConfig {
             Type type = new TypeToken<EnchantmentMaterialConfig>(){}.getType();
             INSTANCE = GSON.fromJson(reader, type);
             System.out.println("[CrashGuard] 加载附魔材料配置成功");
+            System.out.println("[CrashGuard]   - 特定附魔材料: " + INSTANCE.enchantments.size() + " 种");
+            System.out.println("[CrashGuard]   - 全局材料: " + INSTANCE.global_materials.size() + " 种");
         } catch (IOException e) {
             System.err.println("[CrashGuard] 加载附魔材料配置失败: " + e.getMessage());
             INSTANCE = new EnchantmentMaterialConfig();
@@ -57,33 +65,93 @@ public class EnchantmentMaterialConfig {
     private static void createDefaultConfig(File file) {
         EnchantmentMaterialConfig defaultConfig = new EnchantmentMaterialConfig();
 
-        // 默认材料：附魔书
-        MaterialEntry bookEntry = new MaterialEntry();
-        bookEntry.item = "minecraft:enchanted_book";
-
+        // 锋利
         EnchantmentEntry sharpness = new EnchantmentEntry();
         sharpness.id = "minecraft:sharpness";
-        sharpness.level = 5;
-        sharpness.require_modifier_slots = 0;
-        sharpness.cost_modifier_slots_per_level = 1;
-        bookEntry.enchantments.add(sharpness);
+        MaterialEntry quartz = new MaterialEntry();
+        quartz.item = "minecraft:quartz";
+        quartz.count = 40;
+        quartz.max_level = 5;
+        sharpness.materials.add(quartz);
+        defaultConfig.enchantments.add(sharpness);
 
+        // 效率
+        EnchantmentEntry efficiency = new EnchantmentEntry();
+        efficiency.id = "minecraft:efficiency";
+        MaterialEntry redstone = new MaterialEntry();
+        redstone.item = "minecraft:redstone";
+        redstone.count = 40;
+        redstone.max_level = 5;
+        efficiency.materials.add(redstone);
+        defaultConfig.enchantments.add(efficiency);
+
+        // 时运
+        EnchantmentEntry fortune = new EnchantmentEntry();
+        fortune.id = "minecraft:fortune";
+        MaterialEntry lapis = new MaterialEntry();
+        lapis.item = "minecraft:lapis_lazuli";
+        lapis.count = 40;
+        lapis.max_level = 5;
+        fortune.materials.add(lapis);
+        defaultConfig.enchantments.add(fortune);
+
+        // 抢夺
+        EnchantmentEntry looting = new EnchantmentEntry();
+        looting.id = "minecraft:looting";
+        looting.materials.add(lapis);
+        defaultConfig.enchantments.add(looting);
+
+        // 耐久
+        EnchantmentEntry unbreaking = new EnchantmentEntry();
+        unbreaking.id = "minecraft:unbreaking";
+        MaterialEntry obsidian = new MaterialEntry();
+        obsidian.item = "minecraft:obsidian";
+        obsidian.count = 10;
+        obsidian.max_level = 10;
+        unbreaking.materials.add(obsidian);
+        defaultConfig.enchantments.add(unbreaking);
+
+        // 保护
         EnchantmentEntry protection = new EnchantmentEntry();
         protection.id = "minecraft:protection";
-        protection.level = 4;
-        protection.require_modifier_slots = 0;
-        protection.cost_modifier_slots_per_level = 1;
-        bookEntry.enchantments.add(protection);
+        MaterialEntry ironBlock = new MaterialEntry();
+        ironBlock.item = "minecraft:iron_block";
+        ironBlock.count = 5;
+        ironBlock.max_level = 5;
+        protection.materials.add(ironBlock);
+        defaultConfig.enchantments.add(protection);
 
-        defaultConfig.materials.add(bookEntry);
+        // 力量
+        EnchantmentEntry power = new EnchantmentEntry();
+        power.id = "minecraft:power";
+        MaterialEntry string = new MaterialEntry();
+        string.item = "minecraft:string";
+        string.count = 40;
+        string.max_level = 5;
+        power.materials.add(string);
+        defaultConfig.enchantments.add(power);
 
-        // 默认等级上限
-        defaultConfig.enchantmentLimits.put("minecraft:sharpness", 10);
-        defaultConfig.enchantmentLimits.put("minecraft:protection", 8);
+        // 经验修补
+        EnchantmentEntry mending = new EnchantmentEntry();
+        mending.id = "minecraft:mending";
+        MaterialEntry expBottle = new MaterialEntry();
+        expBottle.item = "minecraft:experience_bottle";
+        expBottle.count = 1;
+        expBottle.max_level = 3;
+        mending.materials.add(expBottle);
+        defaultConfig.enchantments.add(mending);
+
+        // 龙蛋
+        GlobalMaterialEntry dragonEgg = new GlobalMaterialEntry();
+        dragonEgg.item = "minecraft:dragon_egg";
+        dragonEgg.count = 1;
+        dragonEgg.max_level = 32767;
+        dragonEgg.per_level = 1;
+        defaultConfig.global_materials.add(dragonEgg);
 
         try (Writer writer = new FileWriter(file)) {
             writer.write(GSON.toJson(defaultConfig));
-            System.out.println("[CrashGuard] 创建默认附魔材料配置文件");
+            System.out.println("[CrashGuard] 创建默认附魔材料配置文件: " + file.getAbsolutePath());
         } catch (IOException e) {
             System.err.println("[CrashGuard] 创建默认配置文件失败: " + e.getMessage());
         }
@@ -96,8 +164,33 @@ public class EnchantmentMaterialConfig {
         return INSTANCE;
     }
 
-    public static MaterialEntry getMaterialEntry(String itemId) {
-        for (MaterialEntry entry : get().materials) {
+    public static MaterialEntry getMaterialEntry(String enchantmentId, String itemId) {
+        for (EnchantmentEntry entry : get().enchantments) {
+            if (entry.id.equals(enchantmentId)) {
+                for (MaterialEntry material : entry.materials) {
+                    if (material.item.equals(itemId)) {
+                        return material;
+                    }
+                }
+            }
+        }
+        return null;
+    }
+
+    public static Map<String, MaterialEntry> getEnchantmentsForItem(String itemId) {
+        Map<String, MaterialEntry> result = new HashMap<>();
+        for (EnchantmentEntry entry : get().enchantments) {
+            for (MaterialEntry material : entry.materials) {
+                if (material.item.equals(itemId)) {
+                    result.put(entry.id, material);
+                }
+            }
+        }
+        return result;
+    }
+
+    public static GlobalMaterialEntry getGlobalMaterialEntry(String itemId) {
+        for (GlobalMaterialEntry entry : get().global_materials) {
             if (entry.item.equals(itemId)) {
                 return entry;
             }
@@ -105,19 +198,8 @@ public class EnchantmentMaterialConfig {
         return null;
     }
 
-    public static EnchantmentEntry getEnchantmentEntry(String itemId, String enchantmentId) {
-        MaterialEntry material = getMaterialEntry(itemId);
-        if (material != null) {
-            for (EnchantmentEntry entry : material.enchantments) {
-                if (entry.id.equals(enchantmentId)) {
-                    return entry;
-                }
-            }
-        }
-        return null;
-    }
-
-    public static int getEnchantmentLimit(String enchantmentId) {
-        return get().enchantmentLimits.getOrDefault(enchantmentId, Integer.MAX_VALUE);
+    public static void reload() {
+        INSTANCE = null;
+        load();
     }
 }

@@ -37,7 +37,7 @@ import net.minecraftforge.fml.common.registry.GameRegistry;
 
 @Mod(modid = CrashGuard.MODID,
         name = "Tinkers' Enchantment and Modification",
-        version = "1.0",
+        version = "1.1",
         dependencies = "required-after:tconstruct")
 public class CrashGuard implements IGuiHandler {
 
