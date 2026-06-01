@@ -12,7 +12,7 @@ import java.util.Map;
 public class CrashGuardPlugin implements IFMLLoadingPlugin {
 
     public CrashGuardPlugin() {
-        System.out.println("[CrashGuard] CoreMod loaded, waiting for external MixinBooter");
+        System.out.println("[CrashGuard] CoreMod loaded");
     }
 
     @Override
@@ -21,7 +21,9 @@ public class CrashGuardPlugin implements IFMLLoadingPlugin {
                 "com.crashguard.core.CrashGuardTransformer",
                 "com.crashguard.core.ToolBuilderTransformer",
                 "com.crashguard.core.ArmorBuilderTransformer",
-                "com.crashguard.core.BattleSignTransformer"
+                "com.crashguard.core.BattleSignTransformer",
+                "com.crashguard.core.TinkerArmorTransformer",
+                "com.crashguard.core.VanillaArmorTransformer" ,
         };
     }
 
