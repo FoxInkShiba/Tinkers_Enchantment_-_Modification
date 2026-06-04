@@ -17,6 +17,7 @@ import net.minecraftforge.common.util.Constants;
 import slimeknights.tconstruct.library.entity.EntityProjectileBase;
 import slimeknights.tconstruct.library.tools.ToolCore;
 import slimeknights.tconstruct.library.utils.ToolHelper;
+import slimeknights.tconstruct.library.tools.ProjectileLauncherNBT;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -28,9 +29,18 @@ public class CompatHandler {
     private static final String BOW_ENCHANTS_KEY = "CrashGuardBowEnch";
     private static final ResourceLocation ADV_POWER_ID = new ResourceLocation("somanyenchantments", "advancedpower");
     private static final String TAG_PRESERVE_ENCHANT = "crashguard_preserve_enchant";
+    private static final ResourceLocation STRAFE_ID = new ResourceLocation("somanyenchantments", "strafe");
 
     private static Field tinkerProjectileField = null;
     private static Method getItemStackMethod = null;
+    private static Enchantment strafeEnchantment = null;
+
+    private static Enchantment getStrafeEnchantment() {
+        if (strafeEnchantment == null) {
+            strafeEnchantment = Enchantment.getEnchantmentByLocation("somanyenchantments:strafe");
+        }
+        return strafeEnchantment;
+    }
 
     static {
         try {
@@ -111,6 +121,12 @@ public class CompatHandler {
         if (!(projectile instanceof EntityProjectileBase)) return 0;
 
         EntityProjectileBase proj = (EntityProjectileBase) projectile;
+
+        // 空检查：发射者可能为 null
+        if (proj.shootingEntity == null) {
+            return 0;
+        }
+
         EntityLivingBase livingTarget = (EntityLivingBase) target;
 
         Map<Enchantment, Integer> merged = new HashMap<>();
@@ -125,6 +141,7 @@ public class CompatHandler {
             if (bowStack.getItem() instanceof ToolCore) {
                 Map<Enchantment, Integer> bowEnchants = ModEnchantment.getAllEnchantments(bowStack);
                 for (Map.Entry<Enchantment, Integer> entry : bowEnchants.entrySet()) {
+                    if (entry.getKey() == null) continue;  // 跳过无效附魔
                     if (ConfigHandler.enchantmentStackAdditive) {
                         merged.merge(entry.getKey(), entry.getValue(), Integer::sum);
                     } else {
@@ -140,6 +157,7 @@ public class CompatHandler {
         if (!arrow.isEmpty()) {
             Map<Enchantment, Integer> arrowEnchants = EnchantmentHelper.getEnchantments(arrow);
             for (Map.Entry<Enchantment, Integer> e : arrowEnchants.entrySet()) {
+                if (e.getKey() == null) continue;  // 跳过无效附魔
                 if (ConfigHandler.enchantmentStackAdditive) {
                     merged.merge(e.getKey(), e.getValue(), Integer::sum);
                 } else {
@@ -161,6 +179,7 @@ public class CompatHandler {
         int advPowerLevel = 0;
 
         for (Map.Entry<Enchantment, Integer> e : merged.entrySet()) {
+            if (e.getKey() == null) continue;  // 跳过无效附魔
             Enchantment ench = e.getKey();
             int lvl = e.getValue();
 
@@ -340,5 +359,88 @@ public class CompatHandler {
     // 用于面板显示伤害（只应用衰减系数配置，不计算附魔）
     public static float getDisplayDamageWithDecay(ItemStack stack, Entity target, Entity projectile, float baseDamage, float cutoffDamage) {
         return ToolHelper.calcCutoffDamage(baseDamage, cutoffDamage);
+    }
+    //扫射附魔
+
+
+    // 获取扫射附魔等级（替换你现有的 getStrafeLevel 方法）
+    public static int getStrafeLevel(ItemStack stack) {
+        if (stack == null || stack.isEmpty()) return 0;
+        Enchantment strafe = getStrafeEnchantment();
+        if (strafe == null) return 0;
+        return EnchantmentHelper.getEnchantmentLevel(strafe, stack);
+    }
+
+    // 修改 useTime（替换你现有的 modifyUseTime 方法）
+    public static int modifyUseTime(int useTime, ItemStack bow) {
+        int strafeLevel = getStrafeLevel(bow);
+        if (strafeLevel > 0) {
+            useTime = useTime + strafeLevel * ConfigHandler.strafeReductionPerLevel + 5;
+        }
+        return Math.max(0, useTime);
+    }
+
+    // 修改十字弓的拉弓时间
+    public static int modifyCrossBowDrawTime(int originalDrawTime, ItemStack crossBow) {
+        int strafeLevel = getStrafeLevel(crossBow);
+        if (strafeLevel > 0) {
+            int reduction = strafeLevel * ConfigHandler.strafeReductionPerLevel * 2 + 5;
+            return Math.max(1, originalDrawTime - reduction);
+        }
+        return originalDrawTime;
+    }
+
+    // 修改 timeLeft（如果要用这个方案）
+    public static int modifyTimeLeft(ItemStack bow, int timeLeft) {
+        int strafeLevel = getStrafeLevel(bow);
+        if (strafeLevel > 0) {
+            int reduction = strafeLevel * ConfigHandler.strafeReductionPerLevel + 5;
+            return Math.max(0, timeLeft - reduction);
+        }
+        return timeLeft;
+    }
+    public static void modifyDrawSpeed(ProjectileLauncherNBT nbt, ItemStack bow) {
+        int strafeLevel = getStrafeLevel(bow);
+        if (strafeLevel > 0) {
+            float increase = strafeLevel * ConfigHandler.strafeReductionPerLevel * 0.05f + 0.1f;
+            nbt.drawSpeed += increase;
+        }
+    }
+    // 检测匠魂进化是否开启了伤害衰减禁用
+    private static Boolean tinkersEvolutionCutoffDisabled = null;
+
+    private static boolean isTinkersEvolutionCutoffDisabled() {
+        if (tinkersEvolutionCutoffDisabled != null) {
+            return tinkersEvolutionCutoffDisabled;
+        }
+        try {
+            Class<?> configClass = Class.forName("xyz.phanta.tconevo.TconEvoConfig");
+            Object tweaks = configClass.getField("tweaks").get(null);
+            java.lang.reflect.Field disableCutoffField = tweaks.getClass().getField("disableDamageCutoff");
+            tinkersEvolutionCutoffDisabled = disableCutoffField.getBoolean(tweaks);
+            System.out.println("[CrashGuard] 匠魂进化 disableDamageCutoff = " + tinkersEvolutionCutoffDisabled);
+            return tinkersEvolutionCutoffDisabled;
+        } catch (Exception e) {
+            tinkersEvolutionCutoffDisabled = false;
+            return false;
+        }
+    }
+
+    // 获取调整后的衰减系数
+    public static float getAdjustedDecayMultiplier() {
+        float original = ConfigHandler.getDamageDecayMultiplier();
+        if (isTinkersEvolutionCutoffDisabled() && original < 1.0f) {
+            return 1.0f;
+        }
+        return original;
+    }
+
+    // 获取调整后的衰减上限
+    public static float getAdjustedDecayCap() {
+        float original = ConfigHandler.getDamageDecayCap();
+        if (isTinkersEvolutionCutoffDisabled()) {
+            return 999999f;
+        }
+        return original;
     }
 }

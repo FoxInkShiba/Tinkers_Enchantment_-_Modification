@@ -90,7 +90,7 @@ public class ContainerAdvancedEnchantingTable extends Container {
 
     @Override
     public ItemStack slotClick(int slotId, int dragType, ClickType clickType, EntityPlayer player) {
-        // 数字快捷键处理
+        // 处理数字快捷键从输出槽取物品
         if (clickType == ClickType.SWAP && slotId >= 0 && slotId < this.inventorySlots.size()) {
             Slot slot = this.inventorySlots.get(slotId);
             if (slot != null && slot.inventory == tile && slot.getSlotIndex() == SLOT_OUTPUT) {
@@ -99,13 +99,26 @@ public class ContainerAdvancedEnchantingTable extends Container {
                     slot.putStack(ItemStack.EMPTY);
                     tile.triggerClear();
                     detectAndSendChanges();
-                    // 将物品放到对应的快捷栏
+                    // 将物品放到对应的快捷键槽
                     player.inventory.setInventorySlotContents(dragType, result);
                     return result;
                 }
             }
         }
-        return super.slotClick(slotId, dragType, clickType, player);
+
+        // 处理鼠标左键/右键从输出槽取物品
+        ItemStack result = super.slotClick(slotId, dragType, clickType, player);
+
+        // 检查输出槽是否变空了（说明物品被取走了）
+        if (slotId >= 0 && slotId < this.inventorySlots.size()) {
+            Slot slot = this.inventorySlots.get(slotId);
+            if (slot != null && slot.inventory == tile && slot.getSlotIndex() == SLOT_OUTPUT && !slot.getHasStack()) {
+                tile.triggerClear();
+                detectAndSendChanges();
+            }
+        }
+
+        return result;
     }
 
     @Override

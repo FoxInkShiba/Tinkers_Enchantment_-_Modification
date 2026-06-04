@@ -39,6 +39,7 @@ public class TileEntityAdvancedEnchantingTable extends TileEntity implements IIn
     private int scrollRow = 0;
     private ItemStack lastTool = ItemStack.EMPTY;
     private boolean isUpdating = false;
+    private boolean isRefreshingBooks = false;
     private boolean pendingClear = false;
 
     private static class EnchantBoost {
@@ -70,123 +71,128 @@ public class TileEntityAdvancedEnchantingTable extends TileEntity implements IIn
         if (world.isRemote) return;
         if (isUpdating) return;
 
-        if (pendingClear) {
-            pendingClear = false;
-            inventory.set(SLOT_TOOL, ItemStack.EMPTY);
-            for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
-                inventory.set(i, ItemStack.EMPTY);
-            }
-            scrollRow = 0;
-            lastTool = ItemStack.EMPTY;
-            updateOutput();
-            markDirty();
-            syncToClient();
-        }
-
-        ItemStack tool = getStackInSlot(SLOT_TOOL);
-
-        if (!tool.isEmpty()) {
-            if (!ItemStack.areItemsEqual(tool, lastTool)) {
-                refreshBooksFromTool(tool);
-                lastTool = tool.copy();
-                updateOutput();
-                markDirty();
-            }
-        } else {
-            if (!lastTool.isEmpty()) {
-                clearAllBooks();
+        try {
+            if (pendingClear) {
+                pendingClear = false;
+                inventory.set(SLOT_TOOL, ItemStack.EMPTY);
+                for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
+                    inventory.set(i, ItemStack.EMPTY);
+                }
+                scrollRow = 0;
                 lastTool = ItemStack.EMPTY;
                 updateOutput();
                 markDirty();
+                syncToClient();
             }
+
+            ItemStack tool = getStackInSlot(SLOT_TOOL);
+
+            if (!tool.isEmpty()) {
+                if (!ItemStack.areItemsEqual(tool, lastTool)) {
+                    refreshBooksFromTool(tool);
+                    lastTool = tool.copy();
+                    updateOutput();
+                    markDirty();
+                }
+            } else {
+                if (!lastTool.isEmpty()) {
+                    clearAllBooks();
+                    lastTool = ItemStack.EMPTY;
+                    updateOutput();
+                    markDirty();
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[CrashGuard] update error: " + e.getMessage());
         }
     }
 
     private void refreshBooksFromTool(ItemStack tool) {
+        if (isUpdating) return;
         isUpdating = true;
-
-        for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
-            inventory.set(i, ItemStack.EMPTY);
-        }
-
-        if (tool.isEmpty()) {
-            isUpdating = false;
-            return;
-        }
-
-        NBTTagCompound rootTag = tool.getTagCompound();
-        if (rootTag == null) {
-            isUpdating = false;
-            return;
-        }
-
-        NBTBase enchBase = rootTag.getTag("ench");
-        NBTTagList enchList = new NBTTagList();
-
-        if (enchBase instanceof NBTTagList) {
-            enchList = (NBTTagList) enchBase;
-        } else if (enchBase instanceof NBTTagCompound) {
-            enchList.appendTag((NBTTagCompound) enchBase);
-        }
-
-        if (enchList.tagCount() == 0) {
-            isUpdating = false;
-            return;
-        }
-
-        int index = 0;
-        for (int i = 0; i < enchList.tagCount() && index < BOOK_SLOT_COUNT; i++) {
-            NBTTagCompound tag = enchList.getCompoundTagAt(i);
-            Enchantment ench = null;
-            int lvl = 0;
-
-            if (tag.hasKey("id", Constants.NBT.TAG_STRING)) {
-                String id = tag.getString("id");
-                ench = Enchantment.getEnchantmentByLocation(id);
-                lvl = tag.getInteger("lvl");
-            } else if (tag.hasKey("id", Constants.NBT.TAG_SHORT)) {
-                int id = tag.getShort("id");
-                ench = Enchantment.getEnchantmentByID(id);
-                lvl = tag.getShort("lvl");
+        isRefreshingBooks = true;
+        try {
+            for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
+                inventory.set(i, ItemStack.EMPTY);
             }
 
-            if (ench != null) {
-                ItemStack book = new ItemStack(Items.ENCHANTED_BOOK);
-                ItemEnchantedBook.addEnchantment(book, new net.minecraft.enchantment.EnchantmentData(ench, lvl));
-                inventory.set(BOOK_START + index, book);
-                index++;
-            }
-        }
+            if (tool.isEmpty()) return;
 
-        isUpdating = false;
+            NBTTagCompound rootTag = tool.getTagCompound();
+            if (rootTag == null) return;
+
+            NBTBase enchBase = rootTag.getTag("ench");
+            NBTTagList enchList = new NBTTagList();
+
+            if (enchBase instanceof NBTTagList) {
+                enchList = (NBTTagList) enchBase;
+            } else if (enchBase instanceof NBTTagCompound) {
+                enchList.appendTag((NBTTagCompound) enchBase);
+            }
+
+            int index = 0;
+            for (int i = 0; i < enchList.tagCount() && index < BOOK_SLOT_COUNT; i++) {
+                NBTTagCompound tag = enchList.getCompoundTagAt(i);
+                Enchantment ench = null;
+                int lvl = 0;
+
+                if (tag.hasKey("id", Constants.NBT.TAG_STRING)) {
+                    String id = tag.getString("id");
+                    ench = Enchantment.getEnchantmentByLocation(id);
+                    lvl = tag.getInteger("lvl");
+                } else if (tag.hasKey("id", Constants.NBT.TAG_SHORT)) {
+                    int id = tag.getShort("id");
+                    ench = Enchantment.getEnchantmentByID(id);
+                    lvl = tag.getShort("lvl");
+                }
+
+                if (ench != null) {
+                    ItemStack book = new ItemStack(Items.ENCHANTED_BOOK);
+                    ItemEnchantedBook.addEnchantment(book, new net.minecraft.enchantment.EnchantmentData(ench, lvl));
+                    inventory.set(BOOK_START + index, book);
+                    index++;
+                }
+            }
+        } catch (Exception e) {
+            System.err.println("[CrashGuard] refreshBooksFromTool error: " + e.getMessage());
+        } finally {
+            isRefreshingBooks = false;
+            isUpdating = false;
+        }
+        updateToolEnchantments();
     }
 
     private void updateOutput() {
-        ItemStack tool = getStackInSlot(SLOT_TOOL);
-        if (tool.isEmpty()) {
+        try {
+            ItemStack tool = getStackInSlot(SLOT_TOOL);
+            if (tool.isEmpty()) {
+                inventory.set(SLOT_OUTPUT, ItemStack.EMPTY);
+                return;
+            }
+
+            ItemStack preview = tool.copy();
+            ItemStack top = getStackInSlot(SLOT_MATERIAL_TOP);
+            ItemStack bottom = getStackInSlot(SLOT_MATERIAL_BOTTOM);
+
+            if (!top.isEmpty() && !bottom.isEmpty() &&
+                    top.getItem().getRegistryName().toString().equals(bottom.getItem().getRegistryName().toString())) {
+                ItemStack merged = top.copy();
+                merged.setCount(top.getCount() + bottom.getCount());
+                applySpecificMaterialEnchantmentsPreview(preview, merged);
+            } else {
+                if (!top.isEmpty()) applySpecificMaterialEnchantmentsPreview(preview, top);
+                if (!bottom.isEmpty()) applySpecificMaterialEnchantmentsPreview(preview, bottom);
+            }
+
+            if (!top.isEmpty()) applyGlobalMaterialEnchantmentsPreview(preview, top);
+            if (!bottom.isEmpty()) applyGlobalMaterialEnchantmentsPreview(preview, bottom);
+            applyEnchantBoostsPreview(preview, top, bottom);
+
+            inventory.set(SLOT_OUTPUT, preview);
+        } catch (Exception e) {
+            System.err.println("[CrashGuard] updateOutput error: " + e.getMessage());
             inventory.set(SLOT_OUTPUT, ItemStack.EMPTY);
-            return;
         }
-
-        ItemStack preview = tool.copy();
-        ItemStack top = getStackInSlot(SLOT_MATERIAL_TOP);
-        ItemStack bottom = getStackInSlot(SLOT_MATERIAL_BOTTOM);
-
-        if (!top.isEmpty() && !bottom.isEmpty() &&
-                top.getItem().getRegistryName().toString().equals(bottom.getItem().getRegistryName().toString())) {
-            ItemStack merged = top.copy();
-            merged.setCount(top.getCount() + bottom.getCount());
-            applySpecificMaterialEnchantmentsPreview(preview, merged);
-        } else {
-            if (!top.isEmpty()) applySpecificMaterialEnchantmentsPreview(preview, top);
-            if (!bottom.isEmpty()) applySpecificMaterialEnchantmentsPreview(preview, bottom);
-        }
-
-        if (!top.isEmpty()) applyGlobalMaterialEnchantmentsPreview(preview, top);
-        if (!bottom.isEmpty()) applyGlobalMaterialEnchantmentsPreview(preview, bottom);
-        applyEnchantBoostsPreview(preview, top, bottom);
-
-        inventory.set(SLOT_OUTPUT, preview);
     }
 
     private void applySpecificMaterialEnchantmentsPreview(ItemStack tool, ItemStack materialStack) {
@@ -646,82 +652,121 @@ public class TileEntityAdvancedEnchantingTable extends TileEntity implements IIn
     private void performActualUpgrade() {
         if (world.isRemote) return;
 
-        ItemStack tool = getStackInSlot(SLOT_TOOL);
-        if (tool.isEmpty()) return;
+        try {
+            ItemStack tool = getStackInSlot(SLOT_TOOL);
+            if (tool.isEmpty()) return;
 
-        ItemStack top = getStackInSlot(SLOT_MATERIAL_TOP);
-        ItemStack bottom = getStackInSlot(SLOT_MATERIAL_BOTTOM);
+            ItemStack top = getStackInSlot(SLOT_MATERIAL_TOP);
+            ItemStack bottom = getStackInSlot(SLOT_MATERIAL_BOTTOM);
 
-        if (top.isEmpty() && bottom.isEmpty()) return;
+            if (top.isEmpty() && bottom.isEmpty()) return;
 
-        ItemStack result = tool.copy();
-        if (tool.getTagCompound() != null) {
-            result.setTagCompound(tool.getTagCompound().copy());
-        }
+            ItemStack result = tool.copy();
+            if (tool.getTagCompound() != null) {
+                result.setTagCompound(tool.getTagCompound().copy());
+            }
 
-        // 1. 先处理附魔加成（钻石）
-        if (!top.isEmpty()) applyEnchantBoostsConsume(result, top);
-        if (!bottom.isEmpty()) applyEnchantBoostsConsume(result, bottom);
+            // 1. 先处理附魔加成
+            if (!top.isEmpty()) applyEnchantBoostsConsume(result, top);
+            if (!bottom.isEmpty()) applyEnchantBoostsConsume(result, bottom);
 
-        // 2. 再处理特定材料（石英）
-        if (!top.isEmpty() || !bottom.isEmpty()) {
-            ItemStack merged = ItemStack.EMPTY;
-            if (!top.isEmpty() && !bottom.isEmpty()) {
-                String topId = top.getItem().getRegistryName().toString();
-                String bottomId = bottom.getItem().getRegistryName().toString();
-                if (topId.equals(bottomId)) {
-                    merged = top.copy();
-                    merged.setCount(top.getCount() + bottom.getCount());
+            // 2. 再处理特定材料
+            if (!top.isEmpty() || !bottom.isEmpty()) {
+                ItemStack merged = ItemStack.EMPTY;
+                if (!top.isEmpty() && !bottom.isEmpty()) {
+                    String topId = top.getItem().getRegistryName().toString();
+                    String bottomId = bottom.getItem().getRegistryName().toString();
+                    if (topId.equals(bottomId)) {
+                        merged = top.copy();
+                        merged.setCount(top.getCount() + bottom.getCount());
+                    }
+                }
+
+                if (!merged.isEmpty()) {
+                    int beforeCount = merged.getCount();
+                    applySpecificMaterialEnchantmentsConsume(result, merged);
+                    int consumed = beforeCount - merged.getCount();
+
+                    if (consumed > 0) {
+                        int remaining = consumed;
+                        if (!top.isEmpty()) {
+                            int take = Math.min(top.getCount(), remaining);
+                            top.shrink(take);
+                            remaining -= take;
+                        }
+                        if (remaining > 0 && !bottom.isEmpty()) {
+                            bottom.shrink(remaining);
+                        }
+                    }
+                } else {
+                    if (!top.isEmpty()) applySpecificMaterialEnchantmentsConsume(result, top);
+                    if (!bottom.isEmpty()) applySpecificMaterialEnchantmentsConsume(result, bottom);
                 }
             }
 
-            if (!merged.isEmpty()) {
-                int beforeCount = merged.getCount();
-                applySpecificMaterialEnchantmentsConsume(result, merged);
-                int consumed = beforeCount - merged.getCount();
+            // 3. 最后处理全局材料
+            if (!top.isEmpty()) applyGlobalMaterialEnchantmentsConsume(result, top);
+            if (!bottom.isEmpty()) applyGlobalMaterialEnchantmentsConsume(result, bottom);
 
-                if (consumed > 0) {
-                    int remaining = consumed;
-                    if (!top.isEmpty()) {
-                        int take = Math.min(top.getCount(), remaining);
-                        top.shrink(take);
-                        remaining -= take;
-                    }
-                    if (remaining > 0 && !bottom.isEmpty()) {
-                        bottom.shrink(remaining);
-                    }
-                }
-            } else {
-                if (!top.isEmpty()) applySpecificMaterialEnchantmentsConsume(result, top);
-                if (!bottom.isEmpty()) applySpecificMaterialEnchantmentsConsume(result, bottom);
+            // 更新工具槽
+            inventory.set(SLOT_TOOL, result);
+            lastTool = result.copy();
+
+            // 清空附魔书槽
+            for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
+                inventory.set(i, ItemStack.EMPTY);
             }
+
+            if (top.getCount() <= 0) inventory.set(SLOT_MATERIAL_TOP, ItemStack.EMPTY);
+            if (bottom.getCount() <= 0) inventory.set(SLOT_MATERIAL_BOTTOM, ItemStack.EMPTY);
+
+            markDirty();
+            syncToClient();
+        } catch (Exception e) {
+            System.err.println("[CrashGuard] performActualUpgrade error: " + e.getMessage());
         }
-
-        // 3. 最后处理全局材料（龙蛋）
-        if (!top.isEmpty()) applyGlobalMaterialEnchantmentsConsume(result, top);
-        if (!bottom.isEmpty()) applyGlobalMaterialEnchantmentsConsume(result, bottom);
-
-        // 更新工具槽
-        inventory.set(SLOT_TOOL, result);
-        lastTool = result.copy();
-
-        // 清空附魔书槽
-        for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
-            inventory.set(i, ItemStack.EMPTY);
-        }
-
-        if (top.getCount() <= 0) inventory.set(SLOT_MATERIAL_TOP, ItemStack.EMPTY);
-        if (bottom.getCount() <= 0) inventory.set(SLOT_MATERIAL_BOTTOM, ItemStack.EMPTY);
-
-        markDirty();
-        syncToClient();
     }
 
-    private void clearAllBooks() {
-        for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
-            inventory.set(i, ItemStack.EMPTY);
+    public void onBookInventoryChanged() {
+        if (isRefreshingBooks || isUpdating) return;
+
+        isUpdating = true;
+        try {
+            updateToolEnchantments();
+        } finally {
+            isUpdating = false;
         }
-        scrollRow = 0;
+    }
+
+    private void updateToolEnchantments() {
+        if (world.isRemote) return;
+
+        try {
+            ItemStack tool = getStackInSlot(SLOT_TOOL);
+            if (tool.isEmpty()) return;
+
+            NBTTagList newEnchList = buildEnchantmentListFromBooks();
+
+            ItemStack result = tool.copy();
+            NBTTagCompound rootTag = result.getTagCompound();
+            if (rootTag == null) {
+                rootTag = new NBTTagCompound();
+                result.setTagCompound(rootTag);
+            }
+
+            if (newEnchList.tagCount() > 0) {
+                rootTag.setTag("ench", newEnchList);
+            } else {
+                rootTag.removeTag("ench");
+            }
+
+            inventory.set(SLOT_TOOL, result);
+            updateOutput();
+            lastTool = result.copy();
+            markDirty();
+        } catch (Exception e) {
+            System.err.println("[CrashGuard] updateToolEnchantments error: " + e.getMessage());
+        }
     }
 
     private NBTTagList buildEnchantmentListFromBooks() {
@@ -780,38 +825,11 @@ public class TileEntityAdvancedEnchantingTable extends TileEntity implements IIn
         return newEnchList;
     }
 
-    private void updateToolEnchantments() {
-        if (world.isRemote) return;
-
-        ItemStack tool = getStackInSlot(SLOT_TOOL);
-        if (tool.isEmpty()) return;
-
-        NBTTagList newEnchList = buildEnchantmentListFromBooks();
-
-        ItemStack result = tool.copy();
-        NBTTagCompound rootTag = result.getTagCompound();
-        if (rootTag == null) {
-            rootTag = new NBTTagCompound();
-            result.setTagCompound(rootTag);
+    private void clearAllBooks() {
+        for (int i = BOOK_START; i < BOOK_START + BOOK_SLOT_COUNT; i++) {
+            inventory.set(i, ItemStack.EMPTY);
         }
-
-        if (newEnchList.tagCount() > 0) {
-            rootTag.setTag("ench", newEnchList);
-        } else {
-            rootTag.removeTag("ench");
-        }
-
-        inventory.set(SLOT_TOOL, result);
-        updateOutput();
-        lastTool = result.copy();
-        markDirty();
-    }
-
-    public void onBookInventoryChanged() {
-        if (isUpdating) return;
-        isUpdating = true;
-        updateToolEnchantments();
-        isUpdating = false;
+        scrollRow = 0;
     }
 
     public void scrollUp() {
@@ -923,7 +941,7 @@ public class TileEntityAdvancedEnchantingTable extends TileEntity implements IIn
             refreshBooksFromTool(stack);
             lastTool = stack.copy();
         }
-        if (index >= BOOK_START) {
+        if (index >= BOOK_START && !isRefreshingBooks) {
             onBookInventoryChanged();
         }
         markDirty();

@@ -3,11 +3,15 @@ package com.crashguard;
 import com.crashguard.block.AdvancedEnchantingTableBlock;
 import com.crashguard.block.EnchantingTableBlock;
 import com.crashguard.command.TestCommand;
+import com.crashguard.command.TestShootCommand;
 import com.crashguard.config.ConfigHandler;
 import com.crashguard.container.ContainerAdvancedEnchantingTable;
 import com.crashguard.container.ContainerEnchantingTable;
+import com.crashguard.core.VanillaArmorHandler;
+import com.crashguard.event.ArmorProtectionHandler;
 import com.crashguard.gui.GuiAdvancedEnchantingTable;
 import com.crashguard.gui.GuiEnchantingTable;
+import com.crashguard.recipe.EnchantmentPreserverRecipe;
 import com.crashguard.tileentity.TileEntityAdvancedEnchantingTable;
 import com.crashguard.tileentity.TileEntityEnchantingTable;
 import net.minecraft.block.Block;
@@ -15,16 +19,17 @@ import net.minecraft.client.renderer.block.model.ModelResourceLocation;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Blocks;
 import net.minecraft.init.Items;
-import net.minecraft.inventory.Container;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBlock;
 import net.minecraft.item.ItemStack;
+import net.minecraft.item.crafting.IRecipe;
 import net.minecraft.tileentity.TileEntity;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 import net.minecraftforge.client.event.ModelRegistryEvent;
 import net.minecraftforge.client.model.ModelLoader;
+import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.event.RegistryEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.common.event.FMLInitializationEvent;
@@ -34,21 +39,29 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.network.IGuiHandler;
 import net.minecraftforge.fml.common.network.NetworkRegistry;
 import net.minecraftforge.fml.common.registry.GameRegistry;
+import net.minecraftforge.registries.IForgeRegistry;
 
+import java.lang.reflect.Field;
+import java.util.Arrays;
+
+/**
+ * Tinkers' Enchantment and Modification
+ *
+ * 附魔保护配方：工具 + 钻石 = 带附魔保护标记的工具（无序合成）
+ * 在工具站/forge重铸时保护附魔不丢失
+ */
 @Mod(modid = CrashGuard.MODID,
         name = "Tinkers' Enchantment and Modification",
-        version = "1.1",
+        version = "1.3",
         dependencies = "required-after:tconstruct")
 public class CrashGuard implements IGuiHandler {
 
     public static final String MODID = "crashguard";
     public static CrashGuard instance;
 
-    // GUI IDs
     public static final int GUI_ENCHANTING_TABLE = 0;
     public static final int GUI_ADVANCED_ENCHANTING_TABLE = 1;
 
-    // 方块
     public static Block enchantingTableBlock;
     public static Block advancedEnchantingTableBlock;
 
@@ -60,14 +73,33 @@ public class CrashGuard implements IGuiHandler {
     public void preInit(FMLPreInitializationEvent event) {
         ConfigHandler.init(event.getSuggestedConfigurationFile());
 
-        // 注册 GUI 处理器
-        NetworkRegistry.INSTANCE.registerGuiHandler(this, this);
+        // 在 preInit 方法中，反射修改 ARMOR_PROTECTION_CAPS 使用匠魂配置
+        try {
+            Class<?> armorHelperClass = Class.forName("c4.conarm.common.armor.utils.ArmorHelper");
+            Field capsField = armorHelperClass.getDeclaredField("ARMOR_PROTECTION_CAPS");
+            capsField.setAccessible(true);
+            float[] caps = (float[]) capsField.get(null);
 
+            // 使用匠魂盔甲的 cap 配置
+            caps[0] = ConfigHandler.getTinkersCapHelmet();
+            caps[1] = ConfigHandler.getTinkersCapChestplate();
+            caps[2] = ConfigHandler.getTinkersCapLeggings();
+            caps[3] = ConfigHandler.getTinkersCapBoots();
+
+            System.out.println("[CrashGuard] ARMOR_PROTECTION_CAPS 已修改为匠魂配置: " +
+                    Arrays.toString(caps));
+        } catch (Exception e) {
+            System.out.println("[CrashGuard] 匠魂盔甲未安装或修改失败: " + e.getMessage());
+        }
+        NetworkRegistry.INSTANCE.registerGuiHandler(this, this);
         System.out.println("[CrashGuard] 初始化完成");
     }
 
     @Mod.EventHandler
     public void init(FMLInitializationEvent event) {
+        // 注册事件处理器（处理所有伤害的护甲减伤）
+        MinecraftForge.EVENT_BUS.register(new ArmorProtectionHandler());
+
         // 普通附魔台配方
         ResourceLocation recipeId1 = new ResourceLocation(MODID, "enchanting_table");
         GameRegistry.addShapedRecipe(recipeId1, recipeId1, new ItemStack(enchantingTableBlock),
@@ -95,7 +127,28 @@ public class CrashGuard implements IGuiHandler {
     @Mod.EventHandler
     public void serverStarting(FMLServerStartingEvent event) {
         event.registerServerCommand(new TestCommand());
+        event.registerServerCommand(new TestShootCommand());
         System.out.println("[CrashGuard] 命令已注册");
+    }
+
+    // ========== 配方注册 ==========
+    @Mod.EventBusSubscriber(modid = MODID)
+    public static class RecipeRegistry {
+        @SubscribeEvent
+        public static void registerRecipes(RegistryEvent.Register<IRecipe> event) {
+            IForgeRegistry<IRecipe> registry = event.getRegistry();
+
+            // 附魔保护配方（无序合成）
+            ItemStack upgradeItem = new ItemStack(Item.getByNameOrId(ConfigHandler.preserveUpgradeItem));
+            if (!upgradeItem.isEmpty()) {
+                EnchantmentPreserverRecipe recipe = new EnchantmentPreserverRecipe(
+                        new ResourceLocation(MODID, "enchantment_preserver"),
+                        upgradeItem
+                );
+                registry.register(recipe);
+                System.out.println("[CrashGuard] 已注册附魔保护配方，使用物品: " + ConfigHandler.preserveUpgradeItem);
+            }
+        }
     }
 
     // ========== 注册方块 ==========

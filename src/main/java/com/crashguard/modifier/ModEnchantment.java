@@ -49,7 +49,6 @@ public class ModEnchantment {
             enchList = new NBTTagList();
         }
 
-        // 统一使用字符串 ID
         String enchId = ench.getRegistryName().toString();
         boolean found = false;
 
@@ -57,7 +56,6 @@ public class ModEnchantment {
             NBTTagCompound entry = enchList.getCompoundTagAt(i);
             String existingId = null;
 
-            // 读取现有附魔 ID（兼容新旧格式）
             if (entry.hasKey(KEY_ENCH_ID, Constants.NBT.TAG_STRING)) {
                 existingId = entry.getString(KEY_ENCH_ID);
             } else if (entry.hasKey("id", Constants.NBT.TAG_SHORT)) {
@@ -93,9 +91,20 @@ public class ModEnchantment {
         return EnchantmentHelper.getEnchantmentLevel(ench, stack);
     }
 
+    // ========== 关键修改：过滤 null 附魔 ==========
     public static Map<Enchantment, Integer> getAllEnchantments(ItemStack stack) {
         if (!(stack.getItem() instanceof ToolCore)) return new LinkedHashMap<>();
-        return EnchantmentHelper.getEnchantments(stack);
+
+        Map<Enchantment, Integer> source = EnchantmentHelper.getEnchantments(stack);
+        Map<Enchantment, Integer> result = new LinkedHashMap<>();
+        for (Map.Entry<Enchantment, Integer> entry : source.entrySet()) {
+            if (entry.getKey() != null) {
+                result.put(entry.getKey(), entry.getValue());
+            } else {
+                System.out.println("[CrashGuard] Skipped null enchantment in getAllEnchantments");
+            }
+        }
+        return result;
     }
 
     // ========== 直接读取 NBT（供 Mixin 和高级附魔台使用）==========
@@ -112,14 +121,11 @@ public class ModEnchantment {
         for (int i = 0; i < enchList.tagCount(); i++) {
             NBTTagCompound entry = enchList.getCompoundTagAt(i);
 
-            // 兼容字符串 ID
             if (entry.hasKey(KEY_ENCH_ID, Constants.NBT.TAG_STRING)) {
                 if (entry.getString(KEY_ENCH_ID).equals(target)) {
                     return entry.getInteger(KEY_ENCH_LVL);
                 }
-            }
-            // 兼容数字 ID
-            else if (entry.hasKey("id", Constants.NBT.TAG_SHORT)) {
+            } else if (entry.hasKey("id", Constants.NBT.TAG_SHORT)) {
                 int id = entry.getShort("id");
                 Enchantment e = Enchantment.getEnchantmentByID(id);
                 if (e != null && e.getRegistryName().toString().equals(target)) {
@@ -130,6 +136,7 @@ public class ModEnchantment {
         return 0;
     }
 
+    // getAllEnchantmentsDirect 已有 null 检查，无需修改
     public static Map<Enchantment, Integer> getAllEnchantmentsDirect(ItemStack stack) {
         Map<Enchantment, Integer> map = new LinkedHashMap<>();
         if (!(stack.getItem() instanceof ToolCore)) return map;
@@ -146,7 +153,6 @@ public class ModEnchantment {
             Enchantment ench = null;
             int lvl = 0;
 
-            // 字符串 ID 格式
             if (entry.hasKey(KEY_ENCH_ID, Constants.NBT.TAG_STRING)) {
                 String id = entry.getString(KEY_ENCH_ID);
                 lvl = entry.getInteger(KEY_ENCH_LVL);
@@ -155,9 +161,7 @@ public class ModEnchantment {
                     map.put(ench, lvl);
                     System.out.println("[CrashGuard]   - " + id + " level " + lvl + " (string)");
                 }
-            }
-            // 数字 ID 格式
-            else if (entry.hasKey("id", Constants.NBT.TAG_SHORT)) {
+            } else if (entry.hasKey("id", Constants.NBT.TAG_SHORT)) {
                 int id = entry.getShort("id");
                 lvl = entry.getShort("lvl");
                 ench = Enchantment.getEnchantmentByID(id);
@@ -186,6 +190,7 @@ public class ModEnchantment {
         } else {
             Map<Enchantment, Integer> enchants = EnchantmentHelper.getEnchantments(stack);
             for (Map.Entry<Enchantment, Integer> entry : enchants.entrySet()) {
+                if (entry.getKey() == null) continue;  // 添加 null 检查
                 NBTTagCompound tag = new NBTTagCompound();
                 tag.setString(KEY_ENCH_ID, entry.getKey().getRegistryName().toString());
                 tag.setInteger(KEY_ENCH_LVL, entry.getValue());

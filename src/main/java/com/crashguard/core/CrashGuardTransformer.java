@@ -306,6 +306,7 @@ public class CrashGuardTransformer implements IClassTransformer {
         }
     }
 
+    // ========== 修改 CalcCutoffDamageVisitor - 使用调整后的衰减值 ==========
     private static class CalcCutoffDamageVisitor extends MethodVisitor {
         public CalcCutoffDamageVisitor(MethodVisitor mv) {
             super(Opcodes.ASM5, mv);
@@ -313,21 +314,21 @@ public class CrashGuardTransformer implements IClassTransformer {
 
         @Override
         public void visitCode() {
-            // 获取配置的衰减乘数
+            // 获取调整后的衰减乘数（如果匠魂进化开了禁用，则取 max(配置值, 1.0f)）
             mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                    "com/crashguard/config/ConfigHandler",
-                    "getDamageDecayMultiplier",
+                    "com/crashguard/util/CompatHandler",
+                    "getAdjustedDecayMultiplier",
                     "()F", false);
             mv.visitVarInsn(Opcodes.FSTORE, 2);
 
-            // 获取配置的衰减上限
+            // 获取调整后的衰减上限（如果匠魂进化开了禁用，返回一个很大的值）
             mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                    "com/crashguard/config/ConfigHandler",
-                    "getDamageDecayCap",
+                    "com/crashguard/util/CompatHandler",
+                    "getAdjustedDecayCap",
                     "()F", false);
             mv.visitVarInsn(Opcodes.FSTORE, 3);
 
-            // float p = 1f
+            // float p = 1.0F
             mv.visitInsn(Opcodes.FCONST_1);
             mv.visitVarInsn(Opcodes.FSTORE, 4);
 
@@ -335,12 +336,13 @@ public class CrashGuardTransformer implements IClassTransformer {
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FSTORE, 5);
 
-            // damage = 0f (复用 var0)
+            // float total = 0.0F (复用 var0)
             mv.visitInsn(Opcodes.FCONST_0);
             mv.visitVarInsn(Opcodes.FSTORE, 0);
 
             Label loopStart = new Label();
             Label loopEnd = new Label();
+            Label capReached = new Label();
 
             // while (d > cutoff)
             mv.visitLabel(loopStart);
@@ -349,7 +351,14 @@ public class CrashGuardTransformer implements IClassTransformer {
             mv.visitInsn(Opcodes.FCMPG);
             mv.visitJumpInsn(Opcodes.IFLE, loopEnd);
 
-            // damage += p * cutoff
+            // 检查 p 是否达到上限
+            mv.visitVarInsn(Opcodes.FLOAD, 4);
+            mv.visitVarInsn(Opcodes.FLOAD, 3);
+            mv.visitInsn(Opcodes.FCMPG);
+            mv.visitJumpInsn(Opcodes.IFGE, capReached);
+
+            // 正常衰减
+            // total += p * cutoff
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
@@ -357,28 +366,11 @@ public class CrashGuardTransformer implements IClassTransformer {
             mv.visitInsn(Opcodes.FADD);
             mv.visitVarInsn(Opcodes.FSTORE, 0);
 
-            // if (p > 0.001f)
-            mv.visitVarInsn(Opcodes.FLOAD, 4);
-            mv.visitLdcInsn(0.001f);
-            mv.visitInsn(Opcodes.FCMPG);
-            Label labelSmall = new Label();
-            mv.visitJumpInsn(Opcodes.IFLE, labelSmall);
-
             // p *= decayMultiplier
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 2);
             mv.visitInsn(Opcodes.FMUL);
             mv.visitVarInsn(Opcodes.FSTORE, 4);
-
-            // if (p > cap) p = cap
-            mv.visitVarInsn(Opcodes.FLOAD, 4);
-            mv.visitVarInsn(Opcodes.FLOAD, 3);
-            mv.visitInsn(Opcodes.FCMPG);
-            Label labelNotCap = new Label();
-            mv.visitJumpInsn(Opcodes.IFLE, labelNotCap);
-            mv.visitVarInsn(Opcodes.FLOAD, 3);
-            mv.visitVarInsn(Opcodes.FSTORE, 4);
-            mv.visitLabel(labelNotCap);
 
             // d -= cutoff
             mv.visitVarInsn(Opcodes.FLOAD, 5);
@@ -388,33 +380,46 @@ public class CrashGuardTransformer implements IClassTransformer {
 
             mv.visitJumpInsn(Opcodes.GOTO, loopStart);
 
-            // p <= 0.001f 时的处理
-            mv.visitLabel(labelSmall);
-            // return damage + p * cutoff + p * d * (1f - p) / cutoff
-            mv.visitVarInsn(Opcodes.FLOAD, 0);
-            mv.visitVarInsn(Opcodes.FLOAD, 4);
-            mv.visitVarInsn(Opcodes.FLOAD, 1);
-            mv.visitInsn(Opcodes.FMUL);
-            mv.visitInsn(Opcodes.FADD);
-
-            mv.visitVarInsn(Opcodes.FLOAD, 4);
+            // p >= cap: 直接计算剩余部分
+            mv.visitLabel(capReached);
+            // 计算剩余步数
             mv.visitVarInsn(Opcodes.FLOAD, 5);
-            mv.visitInsn(Opcodes.FMUL);
             mv.visitVarInsn(Opcodes.FLOAD, 1);
             mv.visitInsn(Opcodes.FDIV);
+            mv.visitInsn(Opcodes.F2I);
+            mv.visitVarInsn(Opcodes.ISTORE, 6);
 
-            mv.visitInsn(Opcodes.FCONST_1);
-            mv.visitVarInsn(Opcodes.FLOAD, 4);
-            mv.visitInsn(Opcodes.FSUB);
-
+            // total += cap * cutoff * remainingSteps
+            mv.visitVarInsn(Opcodes.FLOAD, 0);
+            mv.visitVarInsn(Opcodes.FLOAD, 3);
+            mv.visitVarInsn(Opcodes.FLOAD, 1);
+            mv.visitInsn(Opcodes.FMUL);
+            mv.visitVarInsn(Opcodes.ILOAD, 6);
+            mv.visitInsn(Opcodes.I2F);
             mv.visitInsn(Opcodes.FMUL);
             mv.visitInsn(Opcodes.FADD);
+            mv.visitVarInsn(Opcodes.FSTORE, 0);
 
+            // 计算剩余不足一步的部分
+            mv.visitVarInsn(Opcodes.FLOAD, 5);
+            mv.visitVarInsn(Opcodes.ILOAD, 6);
+            mv.visitInsn(Opcodes.I2F);
+            mv.visitVarInsn(Opcodes.FLOAD, 1);
+            mv.visitInsn(Opcodes.FMUL);
+            mv.visitInsn(Opcodes.FSUB);
+            mv.visitVarInsn(Opcodes.FSTORE, 7);
+
+            // total += cap * remainder
+            mv.visitVarInsn(Opcodes.FLOAD, 0);
+            mv.visitVarInsn(Opcodes.FLOAD, 3);
+            mv.visitVarInsn(Opcodes.FLOAD, 7);
+            mv.visitInsn(Opcodes.FMUL);
+            mv.visitInsn(Opcodes.FADD);
             mv.visitInsn(Opcodes.FRETURN);
 
             // 循环结束
             mv.visitLabel(loopEnd);
-            // return damage + p * d
+            // total += p * d
             mv.visitVarInsn(Opcodes.FLOAD, 0);
             mv.visitVarInsn(Opcodes.FLOAD, 4);
             mv.visitVarInsn(Opcodes.FLOAD, 5);
